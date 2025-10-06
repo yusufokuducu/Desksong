@@ -122,6 +122,11 @@ class DeskSongApp {
             this.saveSettings();
         };
         
+        this.uiController.onCompressorChange = (value) => {
+            this.audioEngine.setCompressor(value);
+            this.saveSettings();
+        };
+        
         // Preset
         this.uiController.onPresetChange = (preset) => {
             const config = this.audioEngine.applyPreset(preset);

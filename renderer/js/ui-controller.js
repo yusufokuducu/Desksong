@@ -47,6 +47,8 @@ class UIController {
         this.elements.reverbValue = document.getElementById('reverb-value');
         this.elements.bassSlider = document.getElementById('bass-slider');
         this.elements.bassValue = document.getElementById('bass-value');
+        this.elements.compressorSlider = document.getElementById('compressor-slider');
+        this.elements.compressorValue = document.getElementById('compressor-value');
         
         // Preset
         this.elements.presetSelector = document.getElementById('preset-selector');
@@ -145,6 +147,19 @@ class UIController {
                 this.throttle('bass', () => {
                     if (this.onBassChange) {
                         this.onBassChange(value);
+                    }
+                });
+            });
+        }
+        
+        // Compressor slider
+        if (this.elements.compressorSlider) {
+            this.elements.compressorSlider.addEventListener('input', (e) => {
+                const value = e.target.value;
+                this.elements.compressorValue.textContent = `${value}%`;
+                this.throttle('compressor', () => {
+                    if (this.onCompressorChange) {
+                        this.onCompressorChange(value);
                     }
                 });
             });

@@ -23,6 +23,8 @@ class AudioEngine {
         this.pitchShift = 0;      // Pitch only (without speed change)
         this.reverbMix = 0;
         this.bassBoost = 0; // 0 to 20 dB
+        this.compressorEnabled = true; // Enable/disable compressor
+        this.compressorThreshold = -24; // dB
         this.preservePitch = true; // Enable pitch preservation for speed changes
         this.actualPlaybackRate = 1.0; // For playback calculations
         
@@ -45,19 +47,20 @@ class AudioEngine {
             this.convolverNode = this.audioContext.createConvolver();
             this.analyserNode = this.audioContext.createAnalyser();
             
-            // Bass boost filter (low-shelf filter)
+            // Bass boost filter (low-shelf filter for clean bass enhancement)
             this.bassFilter = this.audioContext.createBiquadFilter();
             this.bassFilter.type = 'lowshelf';
-            this.bassFilter.frequency.value = 320; // Bass frequencies
+            this.bassFilter.frequency.value = 250; // Focus on sub-bass and bass
+            this.bassFilter.Q.value = 0.7; // Quality factor for natural sound
             this.bassFilter.gain.value = 0; // Initial gain
             
-            // Compressor for better sound quality
+            // Dynamic compressor for better sound quality and loudness
             this.compressor = this.audioContext.createDynamicsCompressor();
-            this.compressor.threshold.value = -24; // dB
-            this.compressor.knee.value = 30; // dB
-            this.compressor.ratio.value = 12; // ratio
-            this.compressor.attack.value = 0.003; // seconds
-            this.compressor.release.value = 0.25; // seconds
+            this.compressor.threshold.value = -24; // dB (when compression starts)
+            this.compressor.knee.value = 30; // dB (smooth transition)
+            this.compressor.ratio.value = 12; // compression ratio
+            this.compressor.attack.value = 0.003; // seconds (how fast it reacts)
+            this.compressor.release.value = 0.25; // seconds (how fast it recovers)
             
             // Create dry/wet mix for reverb
             this.dryGain = this.audioContext.createGain();
@@ -77,14 +80,35 @@ class AudioEngine {
     }
     
     async loadImpulseResponse() {
-        // Create synthetic impulse response for reverb
-        const length = this.audioContext.sampleRate * 2; // 2 seconds
-        const impulse = this.audioContext.createBuffer(2, length, this.audioContext.sampleRate);
+        // Create high-quality synthetic impulse response for reverb
+        const sampleRate = this.audioContext.sampleRate;
+        const length = sampleRate * 3; // 3 seconds for richer reverb
+        const impulse = this.audioContext.createBuffer(2, length, sampleRate);
         
         for (let channel = 0; channel < 2; channel++) {
             const channelData = impulse.getChannelData(channel);
+            
+            // Create realistic reverb with early reflections and late diffusion
             for (let i = 0; i < length; i++) {
-                channelData[i] = (Math.random() * 2 - 1) * Math.pow(1 - i / length, 2);
+                const t = i / sampleRate;
+                
+                // Early reflections (first 50ms)
+                const early = t < 0.05 ? Math.random() * 0.5 : 0;
+                
+                // Late diffuse reverb with exponential decay
+                const decayTime = 2.0; // seconds
+                const late = (Math.random() * 2 - 1) * Math.exp(-3 * t / decayTime);
+                
+                // Add some modulation for richer sound
+                const modulation = Math.sin(2 * Math.PI * 0.5 * t) * 0.1;
+                
+                // Combine all components
+                channelData[i] = (early + late) * (1 + modulation);
+                
+                // Stereo width for channel separation
+                if (channel === 1) {
+                    channelData[i] *= 0.95; // Slight difference for stereo effect
+                }
             }
         }
         
@@ -244,8 +268,8 @@ class AudioEngine {
         
         if (this.isPlaying && this.sourceNode) {
             const elapsed = (this.audioContext.currentTime - this.startTime);
-            // Don't multiply by rate for actual time position
-            const currentTime = this.pauseTime + elapsed * this.actualPlaybackRate;
+            // Calculate actual position in the original audio file
+            const currentTime = this.pauseTime + (elapsed * this.actualPlaybackRate);
             return Math.min(currentTime, this.audioBuffer.duration);
         }
         
@@ -253,7 +277,15 @@ class AudioEngine {
     }
     
     getDuration() {
+        // Always return the original file duration, regardless of playback rate
         return this.audioBuffer ? this.audioBuffer.duration : 0;
+    }
+    
+    getEffectiveDuration() {
+        // Get the perceived duration with current playback rate
+        // This shows how long it will take to play in real-time
+        if (!this.audioBuffer) return 0;
+        return this.audioBuffer.duration / this.actualPlaybackRate;
     }
     
     setVolume(value) {
@@ -369,6 +401,20 @@ class AudioEngine {
             this.bassFilter.gain.cancelScheduledValues(now);
             this.bassFilter.gain.setValueAtTime(this.bassFilter.gain.value, now);
             this.bassFilter.gain.linearRampToValueAtTime(this.bassBoost, now + 0.1);
+        }
+    }
+    
+    setCompressor(value) {
+        // Value is 0-100, convert to threshold -50 to -10 dB
+        // Higher value = more compression (lower threshold)
+        this.compressorThreshold = -50 + (value / 100) * 40;
+        
+        if (this.compressor) {
+            const now = this.audioContext.currentTime;
+            this.compressor.threshold.setValueAtTime(this.compressorThreshold, now);
+            // Adjust ratio based on intensity
+            const ratio = 4 + (value / 100) * 16; // 4:1 to 20:1
+            this.compressor.ratio.setValueAtTime(ratio, now);
         }
     }
     
