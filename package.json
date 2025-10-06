@@ -1,0 +1,33 @@
+{
+  "name": "desksong",
+  "version": "1.0.0",
+  "description": "Modern music player with real-time audio effects and glassmorphism UI",
+  "main": "dist/main.js",
+  "scripts": {
+    "start": "npm run build && electron .",
+    "dev": "tsc -w & electron .",
+    "build": "tsc",
+    "dist": "npm run build && electron-builder",
+    "test": "echo \"Error: no test specified\" && exit 1"
+  },
+  "keywords": [
+    "music",
+    "player",
+    "audio",
+    "effects",
+    "electron"
+  ],
+  "author": "Your Name",
+  "license": "MIT",
+  "devDependencies": {
+    "@types/node": "^24.7.0",
+    "electron": "^38.2.1",
+    "electron-builder": "^26.0.12",
+    "typescript": "^5.9.3"
+  },
+  "dependencies": {
+    "electron-store": "^11.0.2",
+    "soundtouchjs": "^0.2.1",
+    "tone": "^15.1.22"
+  }
+}

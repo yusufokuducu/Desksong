@@ -1,0 +1,226 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Desksong - Modern Music Player</title>
+    <link rel="stylesheet" href="styles.css">
+    <link href="https://fonts.googleapis.com/css2?family=Inter:wght@300;400;500;600;700&display=swap" rel="stylesheet">
+</head>
+<body>
+    <!-- Custom Title Bar -->
+    <div class="title-bar">
+        <div class="title-bar-text">Desksong</div>
+        <div class="title-bar-controls">
+            <button class="title-bar-btn" id="minimize-btn">
+                <svg width="10" height="1" viewBox="0 0 10 1" fill="currentColor">
+                    <rect width="10" height="1"/>
+                </svg>
+            </button>
+            <button class="title-bar-btn" id="maximize-btn">
+                <svg width="10" height="10" viewBox="0 0 10 10" fill="currentColor">
+                    <rect width="10" height="10" stroke="currentColor" fill="none" stroke-width="1"/>
+                </svg>
+            </button>
+            <button class="title-bar-btn close-btn" id="close-btn">
+                <svg width="10" height="10" viewBox="0 0 10 10" fill="currentColor">
+                    <path d="M0 0L10 10M10 0L0 10" stroke="currentColor" stroke-width="1.5"/>
+                </svg>
+            </button>
+        </div>
+    </div>
+
+    <!-- Main Content -->
+    <div class="app-container">
+        <!-- Now Playing Section -->
+        <div class="now-playing-section">
+            <div class="album-art-container">
+                <div class="album-art" id="album-art">
+                    <svg class="default-art" viewBox="0 0 100 100" fill="none">
+                        <circle cx="50" cy="50" r="40" stroke="currentColor" stroke-width="2" opacity="0.3"/>
+                        <path d="M40 35V65L65 50L40 35Z" fill="currentColor" opacity="0.5"/>
+                    </svg>
+                </div>
+            </div>
+            <div class="track-info">
+                <h2 class="track-title" id="track-title">No Track Selected</h2>
+                <p class="track-artist" id="track-artist">Drop files or click to add music</p>
+            </div>
+        </div>
+
+        <!-- Progress Bar -->
+        <div class="progress-section">
+            <div class="progress-time">
+                <span id="current-time">0:00</span>
+                <span id="total-time">0:00</span>
+            </div>
+            <div class="progress-bar-container">
+                <div class="progress-bar" id="progress-bar">
+                    <div class="progress-fill" id="progress-fill"></div>
+                    <div class="progress-thumb" id="progress-thumb"></div>
+                </div>
+            </div>
+        </div>
+
+        <!-- Playback Controls -->
+        <div class="playback-controls">
+            <button class="control-btn" id="shuffle-btn" title="Shuffle">
+                <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
+                    <path d="M16 3h5v5M4 20L21 3M21 16v5h-5M15 15l6 6M4 4l5 5"/>
+                </svg>
+            </button>
+            <button class="control-btn" id="prev-btn" title="Previous">
+                <svg viewBox="0 0 24 24" fill="currentColor">
+                    <path d="M6 6h2v12H6zm3.5 6l8.5 6V6z"/>
+                </svg>
+            </button>
+            <button class="control-btn main-btn" id="play-pause-btn" title="Play/Pause">
+                <svg class="play-icon" viewBox="0 0 24 24" fill="currentColor">
+                    <path d="M8 5v14l11-7z"/>
+                </svg>
+                <svg class="pause-icon" viewBox="0 0 24 24" fill="currentColor" style="display: none;">
+                    <path d="M6 19h4V5H6v14zm8-14v14h4V5h-4z"/>
+                </svg>
+            </button>
+            <button class="control-btn" id="next-btn" title="Next">
+                <svg viewBox="0 0 24 24" fill="currentColor">
+                    <path d="M16 18l2 0 0 -12 -2 0zm-11.5 -6l8.5 -6 0 12z"/>
+                </svg>
+            </button>
+            <button class="control-btn" id="repeat-btn" title="Repeat">
+                <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
+                    <path d="M17 1l4 4-4 4M3 11V9a4 4 0 0 1 4-4h14M7 23l-4-4 4-4M21 13v2a4 4 0 0 1-4 4H3"/>
+                </svg>
+            </button>
+        </div>
+
+        <!-- Volume Control -->
+        <div class="volume-section">
+            <svg class="volume-icon" viewBox="0 0 24 24" fill="currentColor">
+                <path d="M3 9v6h4l5 5V4L7 9H3zm13.5 3c0-1.77-1.02-3.29-2.5-4.03v8.05c1.48-.73 2.5-2.25 2.5-4.02zM14 3.23v2.06c2.89.86 5 3.54 5 6.71s-2.11 5.85-5 6.71v2.06c4.01-.91 7-4.49 7-8.77s-2.99-7.86-7-8.77z"/>
+            </svg>
+            <div class="slider-container">
+                <input type="range" class="slider volume-slider" id="volume-slider" min="0" max="100" value="50">
+            </div>
+            <span class="volume-value" id="volume-value">50%</span>
+        </div>
+
+        <!-- Effects Section -->
+        <div class="effects-section">
+            <h3 class="section-title">Audio Effects</h3>
+            
+            <!-- Speed Control -->
+            <div class="effect-control">
+                <label class="effect-label">
+                    <span>Speed</span>
+                    <span class="effect-value" id="speed-value">1.0x</span>
+                </label>
+                <div class="slider-container">
+                    <input type="range" class="slider effect-slider" id="speed-slider" min="25" max="200" value="100">
+                </div>
+            </div>
+
+            <!-- Pitch Control -->
+            <div class="effect-control">
+                <label class="effect-label">
+                    <span>Pitch</span>
+                    <span class="effect-value" id="pitch-value">0</span>
+                </label>
+                <div class="slider-container">
+                    <input type="range" class="slider effect-slider" id="pitch-slider" min="-12" max="12" value="0">
+                </div>
+            </div>
+
+            <!-- Reverb Control -->
+            <div class="effect-control">
+                <label class="effect-label">
+                    <span>Reverb</span>
+                    <span class="effect-value" id="reverb-value">0%</span>
+                </label>
+                <div class="slider-container">
+                    <input type="range" class="slider effect-slider" id="reverb-slider" min="0" max="100" value="0">
+                </div>
+            </div>
+
+            <!-- Bass Boost Control -->
+            <div class="effect-control">
+                <label class="effect-label">
+                    <span>Bass Boost</span>
+                    <span class="effect-value" id="bass-value">0%</span>
+                </label>
+                <div class="slider-container">
+                    <input type="range" class="slider effect-slider" id="bass-slider" min="0" max="100" value="0">
+                </div>
+            </div>
+
+            <!-- Preset Selector -->
+            <div class="preset-section">
+                <select class="preset-selector" id="preset-selector">
+                    <option value="default">Default</option>
+                    <option value="concert">Concert Hall</option>
+                    <option value="studio">Studio</option>
+                    <option value="radio">Radio</option>
+                    <option value="nightcore">Nightcore</option>
+                    <option value="slowed">Slowed + Reverb</option>
+                </select>
+                <button class="preset-btn" id="save-preset-btn" title="Save Preset">
+                    <svg viewBox="0 0 24 24" fill="currentColor">
+                        <path d="M17 3H5c-1.11 0-2 .9-2 2v14c0 1.1.89 2 2 2h14c1.1 0 2-.9 2-2V7l-4-4zm-5 16c-1.66 0-3-1.34-3-3s1.34-3 3-3 3 1.34 3 3-1.34 3-3 3zm3-10H5V5h10v4z"/>
+                    </svg>
+                </button>
+            </div>
+        </div>
+
+        <!-- Playlist Section (Collapsible) -->
+        <div class="playlist-section">
+            <div class="section-header" id="playlist-header">
+                <h3 class="section-title">Playlist</h3>
+                <svg class="expand-icon" viewBox="0 0 24 24" fill="currentColor">
+                    <path d="M7 10l5 5 5-5z"/>
+                </svg>
+            </div>
+            <div class="playlist-container" id="playlist-container">
+                <div class="playlist-controls">
+                    <button class="playlist-btn" id="add-files-btn">
+                        <svg viewBox="0 0 24 24" fill="currentColor">
+                            <path d="M19 13h-6v6h-2v-6H5v-2h6V5h2v6h6v2z"/>
+                        </svg>
+                        Add Files
+                    </button>
+                    <button class="playlist-btn" id="clear-playlist-btn">
+                        <svg viewBox="0 0 24 24" fill="currentColor">
+                            <path d="M6 19c0 1.1.9 2 2 2h8c1.1 0 2-.9 2-2V7H6v12zM19 4h-3.5l-1-1h-5l-1 1H5v2h14V4z"/>
+                        </svg>
+                        Clear
+                    </button>
+                    <button class="playlist-btn" id="export-btn">
+                        <svg viewBox="0 0 24 24" fill="currentColor">
+                            <path d="M19 9h-4V3H9v6H5l7 7 7-7zM5 18v2h14v-2H5z"/>
+                        </svg>
+                        Export
+                    </button>
+                </div>
+                <div class="playlist-items" id="playlist-items">
+                    <!-- Playlist items will be added here dynamically -->
+                </div>
+            </div>
+        </div>
+
+        <!-- Drop Zone Overlay -->
+        <div class="drop-zone" id="drop-zone" style="display: none;">
+            <div class="drop-zone-content">
+                <svg viewBox="0 0 24 24" fill="currentColor" width="48" height="48">
+                    <path d="M19 13h-6v6h-2v-6H5v-2h6V5h2v6h6v2z"/>
+                </svg>
+                <p>Drop audio files here</p>
+            </div>
+        </div>
+    </div>
+
+    <!-- Scripts -->
+    <script src="js/audio-engine.js"></script>
+    <script src="js/playlist-manager.js"></script>
+    <script src="js/ui-controller.js"></script>
+    <script src="js/app.js"></script>
+</body>
+</html>
