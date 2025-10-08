@@ -17,7 +17,7 @@
     "effects",
     "electron"
   ],
-  "author": "Your Name",
+  "author": "Yusuf Okuducu",
   "license": "MIT",
   "devDependencies": {
     "@types/node": "^24.7.0",
@@ -29,5 +29,23 @@
     "electron-store": "^11.0.2",
     "soundtouchjs": "^0.2.1",
     "tone": "^15.1.22"
+  },
+  "build": {
+    "appId": "com.example.desksong",
+    "files": [
+      "dist/",
+      "renderer/",
+      "package.json"
+    ],
+    "directories": {
+      "output": "release"
+    },
+    "win": {
+      "target": "nsis"
+    },
+    "nsis": {
+      "oneClick": false,
+      "allowToChangeInstallationDirectory": true
+    }
   }
 }
