@@ -130,6 +130,16 @@ body {
     text-align: center;
 }
 
+.now-playing-section.awaiting-track {
+    cursor: pointer;
+    border-color: rgba(255, 255, 255, 0.12);
+    transition: background 0.2s ease;
+}
+
+.now-playing-section.awaiting-track:hover {
+    background: var(--bg-hover);
+}
+
 .album-art-container {
     margin-bottom: 16px;
 }
@@ -418,10 +428,17 @@ body {
     font-size: 13px;
     cursor: pointer;
     outline: none;
+    appearance: none;
+    -webkit-appearance: none;
 }
 
 .preset-selector:hover {
     background: var(--bg-active);
+}
+
+.preset-selector option {
+    background: #080808;
+    color: var(--text-primary);
 }
 
 .preset-btn {

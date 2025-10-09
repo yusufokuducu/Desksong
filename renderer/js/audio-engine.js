@@ -17,6 +17,15 @@ class AudioEngine {
         this.bassFilter = null;
         this.bassGain = null;
         this.compressor = null;
+        this.delayInput = null;
+        this.delayNode = null;
+        this.delayFeedback = null;
+        this.delayWetGain = null;
+        this.chorusInput = null;
+        this.chorusDelay = null;
+        this.chorusDepth = null;
+        this.chorusLFO = null;
+        this.chorusWetGain = null;
         
         // Effect parameters
         this.playbackRate = 1.0;  // Speed only (time stretch)
@@ -27,13 +36,19 @@ class AudioEngine {
         this.compressorThreshold = -24; // dB
         this.preservePitch = true; // Enable pitch preservation for speed changes
         this.actualPlaybackRate = 1.0; // For playback calculations
+        this.delayMix = 0; // 0 to 1
+        this.chorusMix = 0; // 0 to 1
         
         // Impulse response for reverb
         this.impulseBuffer = null;
         
         // Throttling for performance
         this.lastEffectUpdate = 0;
-        this.effectUpdateThrottle = 50; // ms
+        this.effectUpdateThrottle = 20; // ms
+        this.pendingEffectUpdate = null;
+        this.chainConfigured = false;
+        this.pendingDelayMix = null;
+        this.pendingChorusMix = null;
         
         this.initializeAudioContext();
     }
@@ -67,12 +82,60 @@ class AudioEngine {
             this.wetGain = this.audioContext.createGain();
             this.dryGain.gain.value = 1.0;
             this.wetGain.gain.value = 0.0;
+
+            // Advanced effects: delay/echo
+            this.delayInput = this.audioContext.createGain();
+            this.delayInput.gain.value = 1.0;
+            this.delayNode = this.audioContext.createDelay(2.0);
+            this.delayNode.delayTime.value = 0.25;
+            this.delayFeedback = this.audioContext.createGain();
+            this.delayFeedback.gain.value = 0.2;
+            this.delayWetGain = this.audioContext.createGain();
+            this.delayWetGain.gain.value = 0.0;
+            this.delayInput.connect(this.delayNode);
+            this.delayNode.connect(this.delayFeedback);
+            this.delayFeedback.connect(this.delayNode);
+            this.delayNode.connect(this.delayWetGain);
+
+            // Advanced effects: chorus
+            this.chorusInput = this.audioContext.createGain();
+            this.chorusInput.gain.value = 1.0;
+            this.chorusDelay = this.audioContext.createDelay(0.05);
+            this.chorusDelay.delayTime.value = 0.015;
+            this.chorusDepth = this.audioContext.createGain();
+            this.chorusDepth.gain.value = 0.004;
+            this.chorusWetGain = this.audioContext.createGain();
+            this.chorusWetGain.gain.value = 0.0;
+            this.chorusInput.connect(this.chorusDelay);
+            this.chorusDelay.connect(this.chorusWetGain);
+            this.chorusLFO = this.audioContext.createOscillator();
+            this.chorusLFO.frequency.value = 0.8;
+            this.chorusLFO.type = 'sine';
+            this.chorusLFO.connect(this.chorusDepth);
+            this.chorusDepth.connect(this.chorusDelay.delayTime);
+            this.chorusLFO.start();
             
             // Load impulse response for reverb
             await this.loadImpulseResponse();
             
             // Connect nodes (will be reconnected when playing)
             this.setupAudioChain();
+
+            if (this.pendingDelayMix !== null) {
+                const value = this.pendingDelayMix;
+                this.pendingDelayMix = null;
+                this.setDelayMix(value);
+            } else {
+                this.setDelayMix(this.delayMix * 100);
+            }
+
+            if (this.pendingChorusMix !== null) {
+                const value = this.pendingChorusMix;
+                this.pendingChorusMix = null;
+                this.setChorusMix(value);
+            } else {
+                this.setChorusMix(this.chorusMix * 100);
+            }
             
         } catch (error) {
             console.error('Failed to initialize audio context:', error);
@@ -117,8 +180,36 @@ class AudioEngine {
     }
     
     setupAudioChain() {
-        // This will be called each time we play to set up the audio chain
-        // Source -> Gain -> Dry/Wet Mix -> Analyser -> Destination
+        if (!this.audioContext || this.chainConfigured) {
+            return;
+        }
+
+        // Primary path
+        this.gainNode.connect(this.bassFilter);
+        this.bassFilter.connect(this.compressor);
+        this.compressor.connect(this.dryGain);
+        this.compressor.connect(this.convolverNode);
+        this.convolverNode.connect(this.wetGain);
+
+        // Advanced effects paths
+        if (this.delayInput && this.delayWetGain) {
+            this.compressor.connect(this.delayInput);
+            this.delayWetGain.connect(this.analyserNode);
+        }
+
+        if (this.chorusInput && this.chorusWetGain) {
+            this.compressor.connect(this.chorusInput);
+            this.chorusWetGain.connect(this.analyserNode);
+        }
+
+        // Mix back together
+        this.dryGain.connect(this.analyserNode);
+        this.wetGain.connect(this.analyserNode);
+
+        // Final output
+        this.analyserNode.connect(this.audioContext.destination);
+
+        this.chainConfigured = true;
     }
     
     async loadAudioFile(arrayBuffer) {
@@ -163,24 +254,7 @@ class AudioEngine {
         
         // Connect audio chain with compressor
         this.sourceNode.connect(this.gainNode);
-        
-        // Bass boost in the chain
-        this.gainNode.connect(this.bassFilter);
-        
-        // Add compressor before reverb split
-        this.bassFilter.connect(this.compressor);
-        
-        // Split for dry/wet mix after compressor
-        this.compressor.connect(this.dryGain);
-        this.compressor.connect(this.convolverNode);
-        this.convolverNode.connect(this.wetGain);
-        
-        // Mix back together
-        this.dryGain.connect(this.analyserNode);
-        this.wetGain.connect(this.analyserNode);
-        
-        // Final output
-        this.analyserNode.connect(this.audioContext.destination);
+        this.setupAudioChain();
         
         // Handle playback end
         this.sourceNode.onended = () => {
@@ -285,7 +359,11 @@ class AudioEngine {
         // Get the perceived duration with current playback rate
         // This shows how long it will take to play in real-time
         if (!this.audioBuffer) return 0;
-        return this.audioBuffer.duration / this.actualPlaybackRate;
+        const rate = this.actualPlaybackRate || 0;
+        if (rate <= 0) {
+            return Infinity;
+        }
+        return this.audioBuffer.duration / rate;
     }
     
     setVolume(value) {
@@ -331,6 +409,8 @@ class AudioEngine {
             }
             this.pendingEffectUpdate = setTimeout(() => {
                 this.applyPlaybackRate();
+                this.lastEffectUpdate = Date.now();
+                this.pendingEffectUpdate = null;
             }, this.effectUpdateThrottle);
         } else {
             this.applyPlaybackRate();
@@ -418,40 +498,82 @@ class AudioEngine {
         }
     }
     
+    setDelayMix(value) {
+        const clamped = Math.max(0, Math.min(100, Number(value)));
+        this.delayMix = clamped / 100;
+        if (!this.audioContext || !this.delayNode || !this.delayFeedback || !this.delayWetGain) {
+            this.pendingDelayMix = clamped;
+            return;
+        }
+        this.pendingDelayMix = null;
+        const now = this.audioContext.currentTime;
+        const minDelay = 0.08;
+        const maxDelay = 0.6;
+        const targetDelay = minDelay + (maxDelay - minDelay) * this.delayMix;
+        const feedback = 0.1 + this.delayMix * 0.6;
+        const wetLevel = this.delayMix * 0.9;
+        
+        this.delayNode.delayTime.cancelScheduledValues(now);
+        this.delayNode.delayTime.setValueAtTime(this.delayNode.delayTime.value, now);
+        this.delayNode.delayTime.linearRampToValueAtTime(targetDelay, now + 0.12);
+        
+        this.delayFeedback.gain.cancelScheduledValues(now);
+        this.delayFeedback.gain.setValueAtTime(this.delayFeedback.gain.value, now);
+        this.delayFeedback.gain.linearRampToValueAtTime(feedback, now + 0.12);
+        
+        this.delayWetGain.gain.cancelScheduledValues(now);
+        this.delayWetGain.gain.setValueAtTime(this.delayWetGain.gain.value, now);
+        this.delayWetGain.gain.linearRampToValueAtTime(wetLevel, now + 0.12);
+    }
+    
+    setChorusMix(value) {
+        const clamped = Math.max(0, Math.min(100, Number(value)));
+        this.chorusMix = clamped / 100;
+        if (!this.audioContext || !this.chorusDepth || !this.chorusWetGain || !this.chorusLFO) {
+            this.pendingChorusMix = clamped;
+            return;
+        }
+        this.pendingChorusMix = null;
+        const now = this.audioContext.currentTime;
+        const depth = 0.001 + this.chorusMix * 0.004;
+        const rate = 0.3 + this.chorusMix * 1.2;
+        const wet = this.chorusMix * 0.8;
+        
+        this.chorusDepth.gain.cancelScheduledValues(now);
+        this.chorusDepth.gain.setValueAtTime(this.chorusDepth.gain.value, now);
+        this.chorusDepth.gain.linearRampToValueAtTime(depth, now + 0.12);
+        
+        this.chorusLFO.frequency.setValueAtTime(rate, now);
+        
+        this.chorusWetGain.gain.cancelScheduledValues(now);
+        this.chorusWetGain.gain.setValueAtTime(this.chorusWetGain.gain.value, now);
+        this.chorusWetGain.gain.linearRampToValueAtTime(wet, now + 0.12);
+    }
+    
     applyPreset(preset) {
         // Batch update to avoid multiple recalculations
         const presets = {
-            'concert': { reverb: 40, pitch: 0, speed: 1.0 },
-            'studio': { reverb: 15, pitch: 0, speed: 1.0 },
-            'radio': { reverb: 5, pitch: 1, speed: 1.0 },
-            'nightcore': { reverb: 10, pitch: 4, speed: 1.25 },
-            'slowed': { reverb: 60, pitch: -2, speed: 0.75 },
-            'default': { reverb: 0, pitch: 0, speed: 1.0 }
+            'concert': { reverb: 40, pitch: 0, speed: 1.0, delay: 25, chorus: 12 },
+            'studio': { reverb: 15, pitch: 0, speed: 1.0, delay: 10, chorus: 8 },
+            'radio': { reverb: 5, pitch: 1, speed: 1.0, delay: 0, chorus: 0 },
+            'nightcore': { reverb: 10, pitch: 4, speed: 1.25, delay: 8, chorus: 30 },
+            'slowed': { reverb: 60, pitch: -2, speed: 0.75, delay: 45, chorus: 16 },
+            'default': { reverb: 0, pitch: 0, speed: 1.0, delay: 0, chorus: 0 }
         };
         
         const config = presets[preset] || presets['default'];
         
         // Update all parameters at once
-        this.reverbMix = config.reverb / 100;
+        this.setReverbMix(config.reverb);
         this.pitchShift = config.pitch;
         this.playbackRate = config.speed;
-        
-        // Apply reverb immediately
-        if (this.dryGain && this.wetGain) {
-            const now = this.audioContext.currentTime;
-            this.dryGain.gain.cancelScheduledValues(now);
-            this.dryGain.gain.setValueAtTime(this.dryGain.gain.value, now);
-            this.dryGain.gain.linearRampToValueAtTime(1 - this.reverbMix, now + 0.2);
-            
-            this.wetGain.gain.cancelScheduledValues(now);
-            this.wetGain.gain.setValueAtTime(this.wetGain.gain.value, now);
-            this.wetGain.gain.linearRampToValueAtTime(this.reverbMix, now + 0.2);
-        }
+        this.setDelayMix(config.delay);
+        this.setChorusMix(config.chorus);
         
         // Apply playback rate
         this.applyPlaybackRate();
         
-        return config;
+        return { ...config };
     }
     
     async exportProcessedAudio(progressCallback) {
@@ -481,14 +603,58 @@ class AudioEngine {
         const wet = offlineContext.createGain();
         dry.gain.value = 1 - this.reverbMix;
         wet.gain.value = this.reverbMix;
+
+        // Delay effect (echo)
+        const delayInput = offlineContext.createGain();
+        delayInput.gain.value = 1.0;
+        const delayNode = offlineContext.createDelay(2.0);
+        const delayFeedback = offlineContext.createGain();
+        const delayWet = offlineContext.createGain();
+        const baseDelay = 0.08;
+        const maxDelay = 0.6;
+        const delayTime = baseDelay + (maxDelay - baseDelay) * this.delayMix;
+        const delayFeedbackValue = 0.1 + this.delayMix * 0.6;
+        const delayWetLevel = this.delayMix * 0.9;
+        delayNode.delayTime.value = delayTime;
+        delayFeedback.gain.value = delayFeedbackValue;
+        delayWet.gain.value = delayWetLevel;
+        delayInput.connect(delayNode);
+        delayNode.connect(delayFeedback);
+        delayFeedback.connect(delayNode);
+        delayNode.connect(delayWet);
+
+        // Chorus effect
+        const chorusInput = offlineContext.createGain();
+        chorusInput.gain.value = 1.0;
+        const chorusDelay = offlineContext.createDelay(0.05);
+        const chorusWet = offlineContext.createGain();
+        const chorusDepth = offlineContext.createGain();
+        const chorusLFO = offlineContext.createOscillator();
+        const chorusDepthValue = 0.001 + this.chorusMix * 0.004;
+        const chorusRate = 0.3 + this.chorusMix * 1.2;
+        const chorusWetLevel = this.chorusMix * 0.8;
+        chorusDelay.delayTime.value = 0.015;
+        chorusDepth.gain.value = chorusDepthValue;
+        chorusWet.gain.value = chorusWetLevel;
+        chorusLFO.type = 'sine';
+        chorusLFO.frequency.value = chorusRate;
+        chorusLFO.connect(chorusDepth);
+        chorusDepth.connect(chorusDelay.delayTime);
+        chorusInput.connect(chorusDelay);
+        chorusDelay.connect(chorusWet);
         
         // Connect nodes
         source.connect(gain);
         gain.connect(dry);
         gain.connect(convolver);
+        gain.connect(delayInput);
+        gain.connect(chorusInput);
         convolver.connect(wet);
         dry.connect(offlineContext.destination);
         wet.connect(offlineContext.destination);
+        delayWet.connect(offlineContext.destination);
+        chorusWet.connect(offlineContext.destination);
+        chorusLFO.start(0);
         
         // Start rendering
         source.start(0);

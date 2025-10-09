@@ -4,7 +4,7 @@ class UIController {
         this.elements = {};
         this.progressDragging = false;
         this.throttleTimers = {};
-        this.throttleDelay = 50; // ms
+        this.throttleDelay = 25; // ms
         this.initializeElements();
         this.attachEventListeners();
     }
@@ -19,6 +19,7 @@ class UIController {
         this.elements.albumArt = document.getElementById('album-art');
         this.elements.trackTitle = document.getElementById('track-title');
         this.elements.trackArtist = document.getElementById('track-artist');
+        this.elements.nowPlayingSection = document.querySelector('.now-playing-section');
         
         // Progress
         this.elements.currentTime = document.getElementById('current-time');
@@ -49,6 +50,10 @@ class UIController {
         this.elements.bassValue = document.getElementById('bass-value');
         this.elements.compressorSlider = document.getElementById('compressor-slider');
         this.elements.compressorValue = document.getElementById('compressor-value');
+        this.elements.delaySlider = document.getElementById('delay-slider');
+        this.elements.delayValue = document.getElementById('delay-value');
+        this.elements.chorusSlider = document.getElementById('chorus-slider');
+        this.elements.chorusValue = document.getElementById('chorus-value');
         
         // Preset
         this.elements.presetSelector = document.getElementById('preset-selector');
@@ -81,6 +86,15 @@ class UIController {
             window.electronAPI.closeWindow();
         });
         
+        // Now playing quick add
+        if (this.elements.nowPlayingSection) {
+            this.elements.nowPlayingSection.addEventListener('click', () => {
+                if (this.onRequestAddFiles) {
+                    this.onRequestAddFiles();
+                }
+            });
+        }
+
         // Progress bar
         this.elements.progressBar.addEventListener('mousedown', (e) => {
             this.progressDragging = true;
@@ -165,6 +179,30 @@ class UIController {
             });
         }
         
+        if (this.elements.delaySlider) {
+            this.elements.delaySlider.addEventListener('input', (e) => {
+                const value = parseInt(e.target.value, 10);
+                this.elements.delayValue.textContent = `${value}%`;
+                this.throttle('delay', () => {
+                    if (this.onDelayChange) {
+                        this.onDelayChange(value);
+                    }
+                });
+            });
+        }
+        
+        if (this.elements.chorusSlider) {
+            this.elements.chorusSlider.addEventListener('input', (e) => {
+                const value = parseInt(e.target.value, 10);
+                this.elements.chorusValue.textContent = `${value}%`;
+                this.throttle('chorus', () => {
+                    if (this.onChorusChange) {
+                        this.onChorusChange(value);
+                    }
+                });
+            });
+        }
+        
         // Preset selector
         this.elements.presetSelector.addEventListener('change', (e) => {
             if (this.onPresetChange) {
@@ -185,8 +223,15 @@ class UIController {
     setupDragAndDrop() {
         let dragCounter = 0;
         
+        const hasFiles = (event) => {
+            if (!event.dataTransfer) return false;
+            return Array.from(event.dataTransfer.types || []).includes('Files');
+        };
+
         document.addEventListener('dragenter', (e) => {
+            if (!hasFiles(e)) return;
             e.preventDefault();
+            e.stopPropagation();
             dragCounter++;
             if (dragCounter === 1) {
                 this.elements.dropZone.style.display = 'flex';
@@ -194,29 +239,39 @@ class UIController {
         });
         
         document.addEventListener('dragleave', (e) => {
-            dragCounter--;
+            if (!hasFiles(e)) return;
+            dragCounter = Math.max(0, dragCounter - 1);
             if (dragCounter === 0) {
                 this.elements.dropZone.style.display = 'none';
             }
         });
         
         document.addEventListener('dragover', (e) => {
+            if (!hasFiles(e)) return;
             e.preventDefault();
+            e.stopPropagation();
+            e.dataTransfer.dropEffect = 'copy';
         });
         
         document.addEventListener('drop', async (e) => {
+            if (!hasFiles(e)) return;
             e.preventDefault();
+            e.stopPropagation();
             dragCounter = 0;
             this.elements.dropZone.style.display = 'none';
             
-            const files = Array.from(e.dataTransfer.files);
+            const files = Array.from(e.dataTransfer.files || []);
             const audioFiles = files.filter(file => 
                 /\.(mp3|wav|ogg|flac)$/i.test(file.name)
             );
             
             if (audioFiles.length > 0 && this.onFilesDropped) {
-                const paths = audioFiles.map(file => file.path);
-                this.onFilesDropped(paths);
+                const paths = audioFiles
+                    .map(file => file.path)
+                    .filter(Boolean);
+                if (paths.length > 0) {
+                    this.onFilesDropped(paths);
+                }
             }
         });
     }
@@ -244,28 +299,42 @@ class UIController {
         }, this.throttleDelay);
     }
     
-    updateProgress(currentTime, duration) {
+    updateProgress(currentTime, originalDuration, effectiveDuration, isPlaying) {
         if (this.progressDragging) return;
         
-        const percent = duration > 0 ? (currentTime / duration) * 100 : 0;
+        const safeOriginalDuration = originalDuration || 0;
+        const progressFraction = safeOriginalDuration > 0
+            ? Math.min(Math.max(currentTime / safeOriginalDuration, 0), 1)
+            : 0;
+        const displayDuration = effectiveDuration && isFinite(effectiveDuration) && effectiveDuration > 0
+            ? effectiveDuration
+            : safeOriginalDuration;
+        const displayCurrent = displayDuration * progressFraction;
+        const percent = progressFraction * 100;
         
         // Use transform for better performance
         this.elements.progressFill.style.width = `${percent}%`;
         this.elements.progressThumb.style.left = `${percent}%`;
         
-        this.elements.currentTime.textContent = this.formatTime(currentTime);
-        this.elements.totalTime.textContent = this.formatTime(duration);
+        this.elements.currentTime.textContent = this.formatTime(displayCurrent);
+        this.elements.totalTime.textContent = this.formatTime(displayDuration);
     }
     
     updateTrackInfo(track) {
         if (!track) {
             this.elements.trackTitle.textContent = 'No Track Selected';
             this.elements.trackArtist.textContent = 'Drop files or click to add music';
+            if (this.elements.nowPlayingSection) {
+                this.elements.nowPlayingSection.classList.add('awaiting-track');
+            }
             return;
         }
         
         this.elements.trackTitle.textContent = track.name;
         this.elements.trackArtist.textContent = track.artist;
+        if (this.elements.nowPlayingSection) {
+            this.elements.nowPlayingSection.classList.remove('awaiting-track');
+        }
     }
     
     updatePlayButton(isPlaying) {
@@ -371,7 +440,7 @@ class UIController {
         });
     }
     
-    updateEffectSliders(speed, pitch, reverb) {
+    updateEffectSliders(speed, pitch, reverb, extras = {}) {
         this.elements.speedSlider.value = speed * 100;
         this.elements.speedValue.textContent = `${speed.toFixed(2)}x`;
         
@@ -380,6 +449,18 @@ class UIController {
         
         this.elements.reverbSlider.value = reverb;
         this.elements.reverbValue.textContent = `${reverb}%`;
+        
+        if (this.elements.delaySlider && extras.delay !== undefined) {
+            const value = Math.round(extras.delay);
+            this.elements.delaySlider.value = value;
+            this.elements.delayValue.textContent = `${value}%`;
+        }
+        
+        if (this.elements.chorusSlider && extras.chorus !== undefined) {
+            const value = Math.round(extras.chorus);
+            this.elements.chorusSlider.value = value;
+            this.elements.chorusValue.textContent = `${value}%`;
+        }
     }
     
     formatTime(seconds) {

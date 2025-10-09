@@ -50,10 +50,7 @@ class DeskSongApp {
         
         // Playlist controls
         this.uiController.elements.addFilesBtn.addEventListener('click', async () => {
-            const files = await window.electronAPI.selectAudioFiles();
-            if (files && files.length > 0) {
-                await this.addFilesToPlaylist(files);
-            }
+            await this.openFilePicker();
         });
         
         this.uiController.elements.clearPlaylistBtn.addEventListener('click', () => {
@@ -127,19 +124,67 @@ class DeskSongApp {
             this.saveSettings();
         };
         
+        this.uiController.onDelayChange = (value) => {
+            this.audioEngine.setDelayMix(value);
+            this.saveSettings();
+        };
+        
+        this.uiController.onChorusChange = (value) => {
+            this.audioEngine.setChorusMix(value);
+            this.saveSettings();
+        };
+        
         // Preset
-        this.uiController.onPresetChange = (preset) => {
-            const config = this.audioEngine.applyPreset(preset);
-            if (config) {
-                // Update UI to match preset
-                this.uiController.updateEffectSliders(
-                    config.speed,
-                    config.pitch,
-                    config.reverb
-                );
-                if (preset !== 'default') {
-                    this.uiController.showNotification(`Applied ${preset} preset`);
+        this.uiController.onPresetChange = (presetKey) => {
+            let appliedConfig = null;
+            let presetLabel = presetKey;
+            if (presetKey.startsWith('custom_')) {
+                const index = parseInt(presetKey.replace('custom_', ''), 10);
+                const customPresets = JSON.parse(localStorage.getItem('customPresets') || '[]');
+                const custom = customPresets[index];
+                if (custom) {
+                    this.audioEngine.setPlaybackRate(custom.speed ?? 1.0);
+                    this.audioEngine.setPitchShift(custom.pitch ?? 0);
+                    this.audioEngine.setReverbMix(custom.reverb ?? 0);
+                    this.audioEngine.setDelayMix(custom.delay ?? 0);
+                    this.audioEngine.setChorusMix(custom.chorus ?? 0);
+                    this.audioEngine.applyPlaybackRate();
+                    appliedConfig = {
+                        speed: custom.speed ?? 1.0,
+                        pitch: custom.pitch ?? 0,
+                        reverb: custom.reverb ?? 0,
+                        delay: custom.delay ?? 0,
+                        chorus: custom.chorus ?? 0
+                    };
+                    presetLabel = custom.name || 'Custom preset';
                 }
+            } else {
+                const config = this.audioEngine.applyPreset(presetKey);
+                if (config) {
+                    appliedConfig = {
+                        speed: config.speed,
+                        pitch: config.pitch,
+                        reverb: config.reverb,
+                        delay: config.delay,
+                        chorus: config.chorus
+                    };
+                }
+            }
+            
+            if (appliedConfig) {
+                this.uiController.updateEffectSliders(
+                    appliedConfig.speed,
+                    appliedConfig.pitch,
+                    appliedConfig.reverb,
+                    {
+                        delay: appliedConfig.delay !== undefined ? appliedConfig.delay : this.audioEngine.delayMix * 100,
+                        chorus: appliedConfig.chorus !== undefined ? appliedConfig.chorus : this.audioEngine.chorusMix * 100
+                    }
+                );
+                if (presetKey !== 'default') {
+                    this.uiController.showNotification(`Applied ${presetLabel} preset`);
+                }
+                this.saveSettings();
             }
         };
         
@@ -169,6 +214,17 @@ class DeskSongApp {
         this.uiController.onFilesDropped = async (files) => {
             await this.addFilesToPlaylist(files);
         };
+
+        this.uiController.onRequestAddFiles = async () => {
+            await this.openFilePicker();
+        };
+    }
+
+    async openFilePicker() {
+        const files = await window.electronAPI.selectAudioFiles();
+        if (files && files.length > 0) {
+            await this.addFilesToPlaylist(files);
+        }
     }
     
     async addFilesToPlaylist(filePaths) {
@@ -339,7 +395,11 @@ class DeskSongApp {
             this.uiController.updateEffectSliders(
                 this.audioEngine.playbackRate,
                 this.audioEngine.pitchShift,
-                this.audioEngine.reverbMix * 100
+                this.audioEngine.reverbMix * 100,
+                {
+                    delay: this.audioEngine.delayMix * 100,
+                    chorus: this.audioEngine.chorusMix * 100
+                }
             );
         }, 100);
     }
@@ -347,11 +407,15 @@ class DeskSongApp {
     startProgressUpdate() {
         // Use requestAnimationFrame for smoother updates
         const updateProgress = () => {
-            if (this.audioEngine.isPlaying) {
-                const currentTime = this.audioEngine.getCurrentTime();
-                const duration = this.audioEngine.getDuration();
-                this.uiController.updateProgress(currentTime, duration);
-            }
+            const currentTime = this.audioEngine.getCurrentTime();
+            const originalDuration = this.audioEngine.getDuration();
+            const effectiveDuration = this.audioEngine.getEffectiveDuration();
+            this.uiController.updateProgress(
+                currentTime,
+                originalDuration,
+                effectiveDuration,
+                this.audioEngine.isPlaying
+            );
             requestAnimationFrame(updateProgress);
         };
         requestAnimationFrame(updateProgress);
@@ -457,7 +521,9 @@ class DeskSongApp {
             name: name,
             speed: this.audioEngine.playbackRate,
             pitch: this.audioEngine.pitchShift,
-            reverb: this.audioEngine.reverbMix * 100
+            reverb: this.audioEngine.reverbMix * 100,
+            delay: this.audioEngine.delayMix * 100,
+            chorus: this.audioEngine.chorusMix * 100
         };
         
         // Save to localStorage
@@ -498,6 +564,12 @@ class DeskSongApp {
             if (data.reverb !== undefined) {
                 this.audioEngine.setReverbMix(data.reverb);
             }
+            if (data.delay !== undefined) {
+                this.audioEngine.setDelayMix(data.delay);
+            }
+            if (data.chorus !== undefined) {
+                this.audioEngine.setChorusMix(data.chorus);
+            }
             
             this.updateEffectControls();
             
@@ -521,6 +593,8 @@ class DeskSongApp {
             speed: this.audioEngine.playbackRate,
             pitch: this.audioEngine.pitchShift,
             reverb: this.audioEngine.reverbMix * 100,
+            delay: this.audioEngine.delayMix * 100,
+            chorus: this.audioEngine.chorusMix * 100,
             shuffle: this.playlistManager.shuffleMode,
             repeat: this.playlistManager.repeatMode
         };
