@@ -88,9 +88,13 @@ class UIController {
         
         // Now playing quick add
         if (this.elements.nowPlayingSection) {
-            this.elements.nowPlayingSection.addEventListener('click', () => {
-                if (this.onRequestAddFiles) {
-                    this.onRequestAddFiles();
+            this.elements.nowPlayingSection.addEventListener('click', (e) => {
+                // Only trigger if clicking the section itself, not interactive children
+                if (e.target === this.elements.nowPlayingSection || 
+                    e.target.closest('.now-playing-section') === this.elements.nowPlayingSection) {
+                    if (this.onRequestAddFiles && !e.target.closest('button')) {
+                        this.onRequestAddFiles();
+                    }
                 }
             });
         }
@@ -266,11 +270,22 @@ class UIController {
             );
             
             if (audioFiles.length > 0 && this.onFilesDropped) {
-                const paths = audioFiles
-                    .map(file => file.path)
-                    .filter(Boolean);
-                if (paths.length > 0) {
-                    this.onFilesDropped(paths);
+                try {
+                    const paths = audioFiles
+                        .map(file => {
+                            try {
+                                return window.electronAPI.getFilePathFromFile(file);
+                            } catch (err) {
+                                console.error('Error getting file path:', err);
+                                return null;
+                            }
+                        })
+                        .filter(Boolean);
+                    if (paths.length > 0) {
+                        this.onFilesDropped(paths);
+                    }
+                } catch (error) {
+                    console.error('Error processing dropped files:', error);
                 }
             }
         });

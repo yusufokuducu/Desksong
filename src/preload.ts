@@ -1,4 +1,4 @@
-import { contextBridge, ipcRenderer } from 'electron';
+import { contextBridge, ipcRenderer, webUtils } from 'electron';
 
 // Renderer process'e güvenli API'ler expose et
 contextBridge.exposeInMainWorld('electronAPI', {
@@ -12,6 +12,7 @@ contextBridge.exposeInMainWorld('electronAPI', {
   saveAudioFile: (defaultName: string) => ipcRenderer.invoke('save-audio-file', defaultName),
   readFile: (filePath: string) => ipcRenderer.invoke('read-file', filePath),
   writeFile: (filePath: string, data: Buffer) => ipcRenderer.invoke('write-file', filePath, data),
+  getFilePathFromFile: (file: File) => webUtils.getPathForFile(file),
 
   // Tema değişiklikleri
   onThemeChanged: (callback: (isDark: boolean) => void) => {
@@ -33,6 +34,7 @@ declare global {
       saveAudioFile: (defaultName: string) => Promise<string | null>;
       readFile: (filePath: string) => Promise<Buffer | null>;
       writeFile: (filePath: string, data: Buffer) => Promise<boolean>;
+      getFilePathFromFile: (file: File) => string;
       onThemeChanged: (callback: (isDark: boolean) => void) => void;
       platform: NodeJS.Platform;
     };
